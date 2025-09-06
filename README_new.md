@@ -1,2 +1,2 @@
 我对应用进行了很大程度的更新，原markdown文件还来不及改。
-具体更新内容请访问：
+具体更新内容请访问：https://codeforces.com/blog/entry/146115
