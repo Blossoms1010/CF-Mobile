@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A Native iOS/macOS App for Codeforces Competitive Programming**
+**A Native iOS App for Codeforces Competitive Programming**
 
 Powerful Code Editor · Problem Browsing & Practice · Real-time Submission & Testing · Personal Statistics
 
