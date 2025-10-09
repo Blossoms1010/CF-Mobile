@@ -306,7 +306,7 @@ Contributions, bug reports, and feature requests are welcome!
 
 - **Author**: BoxiangZhao(B1ossoms)
 - **Email**: [2750437093@qq.com](mailto:2750437093@qq.com)
-- **GitHub**: [@yourusername](https://github.com/Blossoms1010)
+- **GitHub**: [@Blossoms1010](https://github.com/Blossoms1010)
 
 For bug reports, feature requests, or any questions, feel free to reach out via email!
 
