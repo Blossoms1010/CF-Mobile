@@ -304,9 +304,9 @@ Contributions, bug reports, and feature requests are welcome!
 
 ## 📮 Contact
 
-- **Author**: Zhao Boxiang
+- **Author**: BoxiangZhao(B1ossoms)
 - **Email**: [2750437093@qq.com](mailto:2750437093@qq.com)
-- **GitHub**: [@yourusername](https://github.com/yourusername)
+- **GitHub**: [@yourusername](https://github.com/Blossoms1010)
 
 For bug reports, feature requests, or any questions, feel free to reach out via email!
 
