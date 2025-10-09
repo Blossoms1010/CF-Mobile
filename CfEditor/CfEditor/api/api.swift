@@ -43,6 +43,7 @@ struct CFContest: Codable, Identifiable, Sendable {
     let name: String
     let phase: String?
     let startTimeSeconds: Int?
+    let durationSeconds: Int?
 }
 
 struct CFProblem: Identifiable, Decodable, Sendable, Hashable {
@@ -424,6 +425,11 @@ actor CFAPI {
         return Array(all.prefix(limit))
     }
 
+    // 新增：获取所有比赛列表（包括未结束的）
+    func allContests(forceRefresh: Bool = false) async throws -> [CFContest] {
+        return try await get(method: "contest.list", forceRefresh: forceRefresh)
+    }
+    
     // 新增：获取所有 FINISHED 的比赛列表（用于分页展示的本地分页）
     func allFinishedContests(forceRefresh: Bool = false) async throws -> [CFContest] {
         let all: [CFContest] = try await get(method: "contest.list", forceRefresh: forceRefresh)

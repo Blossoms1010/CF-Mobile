@@ -393,6 +393,10 @@ extension CodeEditorView {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            // 为底部 Tab Bar 预留空间（高度约 66pt）
+            Color.clear.frame(height: 66)
+        }
     }
     private func updateCFLoginState() {}
     private var shouldShowEmptyState: Bool {

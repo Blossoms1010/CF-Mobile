@@ -7,6 +7,7 @@
 
 import SwiftUI
 import WebKit
+import CryptoKit
 
 // MARK: - Problem Statement View (移动端友好)
 
@@ -16,6 +17,8 @@ struct ProblemStatementView: View {
     @State private var copiedInputSample: Int? = nil
     @State private var copiedOutputSample: Int? = nil
     @State private var showRawHTML = false
+    @State private var showGenerateSuccess = false
+    @State private var generatedFileURL: URL? = nil
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
@@ -87,10 +90,19 @@ struct ProblemStatementView: View {
                 .font(.system(size: fontSize + 8, weight: .bold))
                 .foregroundColor(.primary)
             
-            // 限制信息
+            // 限制信息和生成按钮
             HStack(spacing: 16) {
                 LimitBadge(icon: "clock", text: problem.timeLimit, color: .blue)
                 LimitBadge(icon: "memorychip", text: problem.memoryLimit, color: .green)
+                
+                Spacer()
+                
+                // 一键生成 C++ 文件按钮
+                Button(action: generateCppFile) {
+                    Image(systemName: showGenerateSuccess ? "checkmark.circle.fill" : "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.green)
+                }
             }
             
             // IO 文件
@@ -294,6 +306,115 @@ struct ProblemStatementView: View {
         NSPasteboard.general.setString(text, forType: .string)
         #endif
     }
+    
+    // MARK: - Generate C++ File
+    
+    private func generateCppFile() {
+        // 生成文件名：contestId + problemIndex.cpp，例如 1010D.cpp
+        let fileName = "\(problem.contestId)\(problem.problemIndex).cpp"
+        
+        // 获取文档目录
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let fileURL = documentsURL.appendingPathComponent(fileName)
+        
+        // C++ 模板代码
+        let template = """
+#include <bits/stdc++.h>
+#define cy {cout << "YES" << endl; return;}
+#define cn {cout << "NO" << endl; return;}
+#define inf 0x3f3f3f3f
+#define llinf 0x3f3f3f3f3f3f3f3f
+// #define int long long
+#define db(a) cout << #a << " = " << (a) << '\\n'
+
+using namespace std;
+
+typedef pair<int, int> PII;
+typedef tuple<int, int, int, int> St;
+typedef long long ll;
+
+int T = 1;
+const int N = 2e5 + 10, MOD = 998244353;
+int dx[] = {1, -1, 0, 0}, dy[] = {0, 0, 1, -1};
+
+void solve() {
+    
+}
+
+signed main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    cin >> T;
+    while (T -- ) {
+        solve();
+    }
+    return 0;
+}
+"""
+        
+        // 如果文件不存在，创建文件
+        if !FileManager.default.fileExists(atPath: fileURL.path) {
+            try? template.data(using: .utf8)?.write(to: fileURL)
+        }
+        
+        // 准备测试用例数据
+        let testCases = problem.samples.map { sample in
+            [
+                "input": sample.input,
+                "expected": sample.output,
+                "received": "",
+                "lastRunMs": NSNull(),
+                "timedOut": false,
+                "verdict": "none"
+            ] as [String: Any]
+        }
+        
+        // 保存测试用例到编辑器的持久化位置
+        saveTestCases(testCases, for: fileURL)
+        
+        // 显示成功状态
+        showGenerateSuccess = true
+        generatedFileURL = fileURL
+        
+        // 2秒后重置状态
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            showGenerateSuccess = false
+        }
+    }
+    
+    private func saveTestCases(_ testCases: [[String: Any]], for fileURL: URL) {
+        // 使用与编辑器相同的哈希算法
+        let path = fileURL.standardizedFileURL.path
+        let hashed = Insecure.MD5.hash(data: Data(path.utf8)).map { String(format: "%02x", $0) }.joined()
+        
+        // 获取应用支持目录
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        var appFolder = support.appendingPathComponent("CfEditor", isDirectory: true)
+        
+        // 创建 CfEditor 文件夹
+        if !FileManager.default.fileExists(atPath: appFolder.path) {
+            try? FileManager.default.createDirectory(at: appFolder, withIntermediateDirectories: true)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? appFolder.setResourceValues(values)
+        }
+        
+        // 创建 TestCases 子文件夹
+        var tcDir = appFolder.appendingPathComponent("TestCases", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: tcDir.path) {
+            try? FileManager.default.createDirectory(at: tcDir, withIntermediateDirectories: true)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? tcDir.setResourceValues(values)
+        }
+        
+        // 保存测试用例 JSON
+        let tcFile = tcDir.appendingPathComponent("\(hashed).json")
+        if let data = try? JSONSerialization.data(withJSONObject: testCases) {
+            try? data.write(to: tcFile, options: .atomic)
+        }
+    }
 }
 
 // MARK: - Limit Badge
@@ -359,13 +480,16 @@ struct SampleCard: View {
     
     @Environment(\.colorScheme) var colorScheme
     
+    // 🎯 点击高亮功能：记录当前选中的组索引（输入输出联动）
+    @State private var selectedGroup: Int? = nil
+    
     // 根据样例编号决定是否使用条纹背景（奇数样例有条纹，偶数样例无条纹）
     private var useStripes: Bool {
         sampleNumber % 2 == 1
     }
     
     // 将文本分割成行，并关联分组信息
-    private func parseLines(_ text: String, groups: [Int]?) -> [(line: String, groupIndex: Int)] {
+    private func parseLines(_ text: String, groups: [Int]?, isOutput: Bool = false) -> [(line: String, groupIndex: Int)] {
         var lines = text.components(separatedBy: "\n")
         // 移除末尾的空行
         while lines.last?.isEmpty == true {
@@ -383,17 +507,77 @@ struct SampleCard: View {
             print("🔍 使用 Codeforces 原生分组信息: \(Set(groups).sorted())")
             #endif
         } else {
-            // 回退方案：按空行分隔
+            // 回退方案1：按空行分隔
+            var hasEmptyLines = false
             var currentGroup = 0
             for line in lines {
                 if line.trimmingCharacters(in: .whitespaces).isEmpty {
                     currentGroup += 1
+                    hasEmptyLines = true
                 } else {
                     result.append((line, currentGroup))
                 }
             }
+            
+            // 回退方案2：如果没有空行，尝试检测多测试用例格式
+            if !hasEmptyLines && result.count > 0 {
+                // 检测输入的第一行是否是测试用例数量
+                let inputLines = input.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                if let firstLine = inputLines.first, 
+                   let testCount = Int(firstLine.trimmingCharacters(in: .whitespaces)), 
+                   testCount > 1 && testCount <= 100 {
+                    
+                    if isOutput {
+                        // === 输出侧：尝试智能分组 ===
+                        // 检测是否每个测试用例以 YES/NO 开头
+                        let yesNoIndices = result.enumerated().filter { (index, item) in
+                            let trimmed = item.0.trimmingCharacters(in: .whitespaces).uppercased()
+                            return trimmed == "YES" || trimmed == "NO"
+                        }.map { $0.offset }
+                        
+                        if yesNoIndices.count == testCount {
+                            // 找到了匹配的 YES/NO 模式，按此分组
+                            result = []
+                            for (groupIdx, startIdx) in yesNoIndices.enumerated() {
+                                let endIdx = groupIdx + 1 < yesNoIndices.count ? yesNoIndices[groupIdx + 1] : lines.count
+                                for lineIdx in startIdx..<endIdx {
+                                    if lineIdx < lines.count && !lines[lineIdx].trimmingCharacters(in: .whitespaces).isEmpty {
+                                        result.append((lines[lineIdx], groupIdx))
+                                    }
+                                }
+                            }
+                            #if DEBUG
+                            print("✅ 输出使用智能分组（YES/NO模式）：检测到 \(testCount) 个测试用例")
+                            #endif
+                            return result
+                        }
+                    } else {
+                        // === 输入侧：第一行单独分组 ===
+                        // 第一行（测试用例数）使用特殊组号 -1，与输出不对应
+                        result = []
+                        result.append((lines[0], -1))  // 测试用例数单独一组
+                        
+                        // 后续行按顺序分组（从第1组开始）
+                        for i in 1..<lines.count {
+                            if !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
+                                result.append((lines[i], 0))  // 暂时都归为组0
+                            }
+                        }
+                        
+                        #if DEBUG
+                        print("✅ 输入侧检测到多测格式：第一行(\(firstLine))单独分组为 -1")
+                        #endif
+                        return result
+                    }
+                }
+            }
+            
             #if DEBUG
-            print("⚠️ 使用空行分隔回退方案")
+            if hasEmptyLines {
+                print("⚠️ 使用空行分隔回退方案")
+            } else {
+                print("⚠️ 无分组信息且无空行，所有行归为一组")
+            }
             #endif
         }
         
@@ -415,7 +599,7 @@ struct SampleCard: View {
     }
     
     private var outputLines: [(line: String, groupIndex: Int)] {
-        let result = parseLines(output, groups: outputLineGroups)
+        let result = parseLines(output, groups: outputLineGroups, isOutput: true)
         #if DEBUG
         print("🔍 SampleCard \(sampleNumber) - Output:")
         print("   原始字符串长度: \(output.count)")
@@ -460,23 +644,40 @@ struct SampleCard: View {
                 }
                 
                 ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(inputLines.enumerated()), id: \.offset) { index, item in
-                            HStack(spacing: 0) {
-                                Text(item.line.isEmpty ? " " : item.line)
-                                    .font(.system(size: fontSize - 1, design: .monospaced))
-                                    .fixedSize(horizontal: true, vertical: true)
-                                Spacer(minLength: 0)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(inputLines.enumerated()), id: \.offset) { index, item in
+                                HStack(spacing: 0) {
+                                    Text(item.line.isEmpty ? " " : item.line)
+                                        .font(.system(size: fontSize - 1, design: .monospaced))
+                                        .fixedSize(horizontal: true, vertical: true)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .frame(minWidth: UIScreen.main.bounds.width - 48, alignment: .leading)
+                                .background(backgroundColorForLine(groupIndex: item.groupIndex, selectedGroup: selectedGroup, isInput: true))
+                                .contentShape(Rectangle())  // 让整行都可点击
+                                .onTapGesture {
+                                    // 🎯 特殊处理：groupIndex == -1 的行（多测第一行 t）点击时不响应
+                                    if item.groupIndex == -1 {
+                                        return
+                                    }
+                                    
+                                    // 🎯 点击切换高亮：输入输出联动
+                                    if selectedGroup == item.groupIndex {
+                                        selectedGroup = nil
+                                    } else {
+                                        selectedGroup = item.groupIndex
+                                    }
+                                }
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background((useStripes && item.groupIndex % 2 == 1) ? Color.gray.opacity(0.08) : Color.clear)
                         }
+                        .textSelection(.enabled)
                     }
-                    .textSelection(.enabled)
+                    .frame(maxHeight: 300)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -503,23 +704,40 @@ struct SampleCard: View {
                 }
                 
                 ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(outputLines.enumerated()), id: \.offset) { index, item in
-                            HStack(spacing: 0) {
-                                Text(item.line.isEmpty ? " " : item.line)
-                                    .font(.system(size: fontSize - 1, design: .monospaced))
-                                    .fixedSize(horizontal: true, vertical: true)
-                                Spacer(minLength: 0)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(outputLines.enumerated()), id: \.offset) { index, item in
+                                HStack(spacing: 0) {
+                                    Text(item.line.isEmpty ? " " : item.line)
+                                        .font(.system(size: fontSize - 1, design: .monospaced))
+                                        .fixedSize(horizontal: true, vertical: true)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .frame(minWidth: UIScreen.main.bounds.width - 48, alignment: .leading)
+                                .background(backgroundColorForLine(groupIndex: item.groupIndex, selectedGroup: selectedGroup, isInput: false))
+                                .contentShape(Rectangle())  // 让整行都可点击
+                                .onTapGesture {
+                                    // 🎯 特殊处理：groupIndex == -1 的行（多测第一行 t）点击时不响应
+                                    if item.groupIndex == -1 {
+                                        return
+                                    }
+                                    
+                                    // 🎯 点击切换高亮：输入输出联动
+                                    if selectedGroup == item.groupIndex {
+                                        selectedGroup = nil
+                                    } else {
+                                        selectedGroup = item.groupIndex
+                                    }
+                                }
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background((useStripes && item.groupIndex % 2 == 1) ? Color.gray.opacity(0.08) : Color.clear)
                         }
+                        .textSelection(.enabled)
                     }
-                    .textSelection(.enabled)
+                    .frame(maxHeight: 300)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -527,6 +745,37 @@ struct SampleCard: View {
         .background(colorScheme == .dark ? Color(.systemGray6) : Color.white)
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+    }
+    
+    // MARK: - Helper: 计算行背景色（高亮 > 条纹 > 透明）
+    
+    /// 计算每一行的背景色
+    /// - Parameters:
+    ///   - groupIndex: 该行所属的组索引（-1 表示多测题目的第一行 t，不参与高亮）
+    ///   - selectedGroup: 当前选中的组索引（nil 表示未选中）
+    ///   - isInput: 是否是输入区域（用于区分输入/输出的选中状态）
+    /// - Returns: 背景颜色
+    private func backgroundColorForLine(groupIndex: Int, selectedGroup: Int?, isInput: Bool) -> Color {
+        // 🎯 特殊处理：groupIndex == -1 表示多测题目的第一行（测试用例数量 t），不参与高亮
+        if groupIndex == -1 {
+            return Color.clear
+        }
+        
+        // 🎯 优先级1：如果该组被选中，显示淡淡的黄色高亮
+        if let selected = selectedGroup, selected == groupIndex {
+            // CF 官网风格的黄色高亮（更淡的黄色，深色模式下稍微调暗）
+            return colorScheme == .dark 
+                ? Color.yellow.opacity(0.15)   // 深色模式：淡黄色
+                : Color.yellow.opacity(0.20)   // 浅色模式：淡黄色
+        }
+        
+        // 🎯 优先级2：如果启用条纹背景且是奇数组，显示灰色条纹
+        if useStripes && groupIndex % 2 == 1 {
+            return Color.gray.opacity(0.08)
+        }
+        
+        // 🎯 优先级3：默认透明
+        return Color.clear
     }
 }
 

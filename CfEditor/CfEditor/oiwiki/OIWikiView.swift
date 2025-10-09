@@ -12,6 +12,7 @@ class OIWikiWebViewManager: ObservableObject {
 
 struct OIWikiView: View {
     @StateObject private var webViewManager = OIWikiWebViewManager()
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
         VStack(spacing: 0) {
@@ -63,7 +64,8 @@ struct OIWikiView: View {
                     webView: webViewManager.webView,
                     isLoading: $webViewManager.isLoading,
                     canGoBack: $webViewManager.canGoBack,
-                    canGoForward: $webViewManager.canGoForward
+                    canGoForward: $webViewManager.canGoForward,
+                    colorScheme: colorScheme
                 )
                 .padding(.bottom, 60) // 留出 TabBar 空间
                 
@@ -103,6 +105,7 @@ struct OIWikiWebViewRepresentable: UIViewRepresentable {
     @Binding var isLoading: Bool
     @Binding var canGoBack: Bool
     @Binding var canGoForward: Bool
+    let colorScheme: ColorScheme
     
     func makeUIView(context: Context) -> WKWebView {
         webView.navigationDelegate = context.coordinator
@@ -127,6 +130,53 @@ struct OIWikiWebViewRepresentable: UIViewRepresentable {
             canGoBack = uiView.canGoBack
             canGoForward = uiView.canGoForward
         }
+        
+        // 检查系统主题是否发生了变化
+        if let previous = context.coordinator.previousColorScheme, previous == colorScheme {
+            // 主题没有变化，不执行任何操作（允许用户手动切换）
+            return
+        }
+        
+        // 系统主题发生了变化，更新 OI Wiki 主题
+        context.coordinator.previousColorScheme = colorScheme
+        
+        let targetTheme = colorScheme == .dark ? "slate" : "default"
+        let script = """
+        (function() {
+            try {
+                // Material for MkDocs 的主题切换
+                var root = document.documentElement;
+                
+                // 查找所有主题选项的 input 元素
+                var inputs = document.querySelectorAll('input[data-md-color-scheme]');
+                var targetInput = null;
+                
+                // 找到目标主题的 input（slate 是深色，default 是浅色）
+                for (var i = 0; i < inputs.length; i++) {
+                    if (inputs[i].getAttribute('data-md-color-scheme') === '\(targetTheme)') {
+                        targetInput = inputs[i];
+                        break;
+                    }
+                }
+                
+                // 如果找到了对应的 input 且未被选中，则点击它
+                if (targetInput && !targetInput.checked) {
+                    targetInput.click();
+                } else if (!targetInput) {
+                    // 如果没找到 input，直接修改 attribute
+                    root.setAttribute('data-md-color-scheme', '\(targetTheme)');
+                    
+                    // 同时更新 localStorage 以保持状态
+                    var palette = JSON.parse(localStorage.getItem('.__palette') || '{}');
+                    palette.index = '\(targetTheme)' === 'slate' ? 1 : 0;
+                    localStorage.setItem('.__palette', JSON.stringify(palette));
+                }
+            } catch(e) {
+                console.log('Theme toggle error:', e);
+            }
+        })();
+        """
+        uiView.evaluateJavaScript(script, completionHandler: nil)
     }
     
     func makeCoordinator() -> Coordinator {
@@ -135,6 +185,7 @@ struct OIWikiWebViewRepresentable: UIViewRepresentable {
     
     class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let parent: OIWikiWebViewRepresentable
+        var previousColorScheme: ColorScheme?
         
         init(_ parent: OIWikiWebViewRepresentable) {
             self.parent = parent
@@ -163,13 +214,57 @@ struct OIWikiWebViewRepresentable: UIViewRepresentable {
             parent.isLoading = true
         }
         
-        // *** 修改部分：移除了所有JavaScript注入 ***
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             parent.isLoading = false
             parent.canGoBack = webView.canGoBack
             parent.canGoForward = webView.canGoForward
             
-            // 这里不再注入任何脚本
+            // 页面首次加载时，初始化主题为系统主题
+            if previousColorScheme == nil {
+                previousColorScheme = parent.colorScheme
+                
+                let targetTheme = parent.colorScheme == .dark ? "slate" : "default"
+                
+                // 延迟执行，确保页面 DOM 完全加载
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let script = """
+                    (function() {
+                        try {
+                            // Material for MkDocs 的主题切换
+                            var root = document.documentElement;
+                            
+                            // 查找所有主题选项的 input 元素
+                            var inputs = document.querySelectorAll('input[data-md-color-scheme]');
+                            var targetInput = null;
+                            
+                            // 找到目标主题的 input（slate 是深色，default 是浅色）
+                            for (var i = 0; i < inputs.length; i++) {
+                                if (inputs[i].getAttribute('data-md-color-scheme') === '\(targetTheme)') {
+                                    targetInput = inputs[i];
+                                    break;
+                                }
+                            }
+                            
+                            // 如果找到了对应的 input 且未被选中，则点击它
+                            if (targetInput && !targetInput.checked) {
+                                targetInput.click();
+                            } else if (!targetInput) {
+                                // 如果没找到 input，直接修改 attribute
+                                root.setAttribute('data-md-color-scheme', '\(targetTheme)');
+                                
+                                // 同时更新 localStorage 以保持状态
+                                var palette = JSON.parse(localStorage.getItem('.__palette') || '{}');
+                                palette.index = '\(targetTheme)' === 'slate' ? 1 : 0;
+                                localStorage.setItem('.__palette', JSON.stringify(palette));
+                            }
+                        } catch(e) {
+                            console.log('Theme toggle error:', e);
+                        }
+                    })();
+                    """
+                    webView.evaluateJavaScript(script, completionHandler: nil)
+                }
+            }
         }
         
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

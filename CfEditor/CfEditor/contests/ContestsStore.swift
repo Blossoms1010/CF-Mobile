@@ -13,6 +13,7 @@ struct ContestVM: Identifiable, Equatable {
     let name: String
     let startTime: Date?
     let phase: String?
+    let durationSeconds: Int?
     
     // 计算属性：从名称推断比赛类型
     var division: ContestDivision {
@@ -61,6 +62,7 @@ final class ContestsStore: ObservableObject {
     @Published var problemErrorMap: [Int: String] = [:]   // 行内错误文案
     @Published var problemAttemptMap: [ProblemKey: ProblemAttemptState] = [:] // 单题做题状态
     @Published var problemAttemptByName: [String: ProblemAttemptState] = [:]   // 跨场同题（按名称归并）
+    @Published var problemStatistics: [String: Int] = [:]  // problemId -> solvedCount（通过人数统计）
 
     // —— 会话 & 加载策略 —— //
     private var firstLoaded = false
@@ -173,7 +175,7 @@ final class ContestsStore: ObservableObject {
             if let cached = loadContestsFromDisk() {
                 let items: [ContestVM] = cached.map { c in
                     let start = c.startTimeSeconds.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-                    return ContestVM(id: c.id, name: c.name, startTime: start, phase: c.phase)
+                    return ContestVM(id: c.id, name: c.name, startTime: start, phase: c.phase, durationSeconds: c.durationSeconds)
                 }.sorted { ($0.startTime ?? .distantPast) > ($1.startTime ?? .distantPast) }
                 self.allItems = items
                 self.vms = Array(items.prefix(pageSize))
@@ -189,10 +191,14 @@ final class ContestsStore: ObservableObject {
                 Task { [weak self] in
                     await self?.batchLoadParticipantCounts(contestIds: ids)
                 }
+                // 加载题目统计信息
+                Task { [weak self] in
+                    await self?.loadProblemStatistics()
+                }
             }
 
-            // 并行：完整比赛列表 + （如已登录）最近提交
-            async let contestsTask: [CFContest] = CFAPI.shared.allFinishedContests(forceRefresh: force)
+            // 并行：完整比赛列表（包括未结束的） + （如已登录）最近提交
+            async let contestsTask: [CFContest] = CFAPI.shared.allContests(forceRefresh: force)
 
             var subsTask: Task<[CFSubmission], Error>? = nil
             if !handle.isEmpty {
@@ -206,7 +212,7 @@ final class ContestsStore: ObservableObject {
             let contests = try await contestsTask
             let items: [ContestVM] = contests.map { c in
                 let start = c.startTimeSeconds.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-                return ContestVM(id: c.id, name: c.name, startTime: start, phase: c.phase)
+                return ContestVM(id: c.id, name: c.name, startTime: start, phase: c.phase, durationSeconds: c.durationSeconds)
             }.sorted { ($0.startTime ?? .distantPast) > ($1.startTime ?? .distantPast) }
 
             // 会话校验后上屏
@@ -228,6 +234,10 @@ final class ContestsStore: ObservableObject {
             // 批量加载参与人数
             Task { [weak self] in
                 await self?.batchLoadParticipantCounts(contestIds: onlineIds)
+            }
+            // 加载题目统计信息
+            Task { [weak self] in
+                await self?.loadProblemStatistics()
             }
 
             // 进度（如登录）
@@ -517,6 +527,20 @@ final class ContestsStore: ObservableObject {
             // 可以在这里添加单个比赛参与人数的获取逻辑
             // 例如通过 contest.standings API 获取参与人数
             _ = contestId // 避免未使用变量警告
+        }
+    }
+    
+    // MARK: - 加载题目统计信息
+    
+    private func loadProblemStatistics() async {
+        do {
+            // 从 problemset.problems API 获取所有题目和统计信息
+            let result = try await CFAPI.shared.problemsetProblems(forceRefresh: false)
+            await MainActor.run {
+                self.problemStatistics = result.statistics
+            }
+        } catch {
+            print("Failed to load problem statistics: \(error)")
         }
     }
 }

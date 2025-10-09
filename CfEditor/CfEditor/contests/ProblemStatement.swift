@@ -31,8 +31,9 @@ struct ProblemStatement: Codable, Identifiable {
     let cachedAt: Date
     let sourceURL: String
     let rawHTML: String?  // 🔍 调试用：存储原始 HTML
+    let hasMultipleTestCases: Bool  // 是否包含多测
     
-    init(contestId: Int, problemIndex: String, name: String, timeLimit: String, memoryLimit: String, inputFile: String, outputFile: String, statement: [ContentElement], inputSpecification: [ContentElement], outputSpecification: [ContentElement], samples: [TestSample], note: [ContentElement]?, sourceURL: String, rawHTML: String? = nil) {
+    init(contestId: Int, problemIndex: String, name: String, timeLimit: String, memoryLimit: String, inputFile: String, outputFile: String, statement: [ContentElement], inputSpecification: [ContentElement], outputSpecification: [ContentElement], samples: [TestSample], note: [ContentElement]?, sourceURL: String, rawHTML: String? = nil, hasMultipleTestCases: Bool = false) {
         self.id = "\(contestId)-\(problemIndex)"
         self.contestId = contestId
         self.problemIndex = problemIndex
@@ -49,6 +50,7 @@ struct ProblemStatement: Codable, Identifiable {
         self.cachedAt = Date()
         self.sourceURL = sourceURL
         self.rawHTML = rawHTML
+        self.hasMultipleTestCases = hasMultipleTestCases
     }
 }
 

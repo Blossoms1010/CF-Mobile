@@ -1,12 +1,6 @@
 import SwiftUI
 import CryptoKit
 
-// MARK: - 练习页面模式
-enum PracticeMode: String, CaseIterable {
-    case contests = "Contests"
-    case problemset = "Problems"
-}
-
 struct ContestsView: View {
     @AppStorage("cfHandle") private var handle: String = ""
     @StateObject var store: ContestsStore
@@ -16,7 +10,13 @@ struct ContestsView: View {
     @State private var selectedMode: PracticeMode = .contests
     
     // 仅在本视图内维护展开状态（如需跨页持久，可换成 SceneStorage 自行序列化）
-    @State private var expanded: Set<Int> = []
+    @State private var expandedContests: [Int: Bool] = [:]
+    
+    // 计算属性：兼容原代码中使用 Set<Int> 的地方
+    private var expanded: Set<Int> {
+        Set(expandedContests.filter { $0.value }.map { $0.key })
+    }
+    
     // 用于导航到题面页面，避免每个条目提前构建目的视图导致"全开"
     @State private var selectedProblem: CFProblem?
     
@@ -29,6 +29,10 @@ struct ContestsView: View {
     // 搜索状态
     @State private var searchText: String = ""
     @FocusState private var isSearchFocused: Bool
+    
+    // 倒计时更新定时器
+    @State private var countdownTimer: Timer?
+    @State private var currentTime = Date()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,6 +113,13 @@ struct ContestsView: View {
         // 比赛过滤器弹窗
         .sheet(isPresented: $showingContestFilterSheet) {
             ContestFilterView(store: store)
+        }
+        // 倒计时定时器管理
+        .onAppear {
+            startCountdownTimer()
+        }
+        .onDisappear {
+            stopCountdownTimer()
         }
     }
     
@@ -249,109 +260,84 @@ struct ContestsView: View {
                 }
             }
 
-            // 比赛列表 - 带滑入动画
-            ForEach(Array(store.vms.enumerated()), id: \.element.id) { index, vm in
+            // 比赛列表 - 分块显示
+            let (upcomingContests, ongoingContests, finishedContests) = partitionContests(store.vms)
+            
+            // 第一块：即将开始/正在进行的比赛（可展开）
+            if !upcomingContests.isEmpty {
                 Section {
-                    DisclosureGroup(isExpanded: Binding(
-                        get: { expanded.contains(vm.id) },
-                        set: { isExpanding in
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                if isExpanding { _ = expanded.insert(vm.id) }
-                                else { expanded.remove(vm.id) }
-                            }
-                            if isExpanding {
-                                Task { 
-                                    await store.ensureProblemsLoaded(contestId: vm.id)
-                                    // 参与人数在首屏批量加载，这里不需要单独加载
-                                }
-                            }
-                        }
-                    )) {
-                        // 展开内容：题目 / 行内错误 / 占位
-                        if let err = store.problemErrorMap[vm.id] {
-                            Text(err).foregroundColor(.red)
-                        } else if let problems = store.problemCache[vm.id], !problems.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                ForEach(Array(problems.enumerated()), id: \.element.index) { pIndex, p in
-                                    let problemState = problemStateForDisplay(vmId: vm.id, p: p)
-                                    
-                                    Button {
-                                        performLightHaptic()
-                                        selectedProblem = p
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            // 状态图标
-                                            circledStatusIcon(for: problemState)
-                                                .scaleEffect(1.1)
-                                            
-                                            // 题目信息
-                                            VStack(alignment: .leading, spacing: 3) {
-                                                HStack(spacing: 8) {
-                                                    Text(p.index)
-                                                        .font(.system(size: 15, weight: .bold))
-                                                        .foregroundColor(colorForProblemRating(p.rating))
-                                                    
-                                                    Text(p.name)
-                                                        .font(.system(size: 14))
-                                                        .foregroundColor(.primary)
-                                                        .lineLimit(2)
-                                                }
-                                                
-                                                if let rating = p.rating {
-                                                    HStack(spacing: 4) {
-                                                        Text("●")
-                                                            .font(.system(size: 8))
-                                                            .foregroundColor(colorForProblemRating(rating))
-                                                        Text("\(rating)")
-                                                            .font(.caption2)
-                                                            .foregroundColor(.secondary)
-                                                    }
-                                                }
-                                            }
-                                            
-                                            Spacer()
-                                            
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        .padding(12)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .fill(Color(.systemGray6))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 10)
-                                                        .stroke(colorForProblemRating(p.rating).opacity(0.2), lineWidth: 1)
-                                                )
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .transition(.asymmetric(
-                                        insertion: .move(edge: .top).combined(with: .opacity),
-                                        removal: .opacity
-                                    ))
-                                    .animation(.spring(response: 0.3, dampingFraction: 0.7).delay(Double(pIndex) * 0.05), value: expanded.contains(vm.id))
-                                }
-                            }
-                            .padding(.top, 8)
-                            .padding(.bottom, 6)
-                        } else if store.loadingContestIds.contains(vm.id) {
-                            HStack { ProgressView(); Text("Loading...") }
-                        } else {
-                            Text("展开加载题目").foregroundColor(.secondary)
-                        }
-                    } label: {
-                        rowHeader(vm)
+                    // 区块标题
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("即将开始/正在进行")
+                            .font(.system(size: 14, weight: .semibold))
+                        Spacer()
+                    }
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(.systemGray6))
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    
+                    // 比赛列表 - 每个比赛独立成行
+                    ForEach(Array(upcomingContests.enumerated()), id: \.element.id) { index, vm in
+                        contestRow(for: vm, index: index)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
                 }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .opacity
-                ))
-                .animation(.spring(response: 0.4, dampingFraction: 0.8).delay(Double(index) * 0.05), value: store.vms.count)
-                .task { 
-                    await store.ensureProblemsLoaded(contestId: vm.id)
-                    // 参与人数在首屏批量加载，这里不需要单独加载
+            }
+            
+            // 第二块：正在进行的比赛（已合并到第一块）
+            if !ongoingContests.isEmpty {
+                Section {
+                    // 区块标题
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("正在进行")
+                            .font(.system(size: 14, weight: .semibold))
+                        Spacer()
+                    }
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(.systemGray6))
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    
+                    // 比赛列表 - 每个比赛独立成行
+                    ForEach(Array(ongoingContests.enumerated()), id: \.element.id) { index, vm in
+                        contestRow(for: vm, index: index)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    }
+                }
+            }
+            
+            // 第三块：已结束的比赛（可展开）
+            if !finishedContests.isEmpty {
+                Section {
+                    // 区块标题
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("已结束")
+                            .font(.system(size: 14, weight: .semibold))
+                        Spacer()
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color(.systemGray6))
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    
+                    // 比赛列表 - 每个比赛独立成行
+                    ForEach(Array(finishedContests.enumerated()), id: \.element.id) { index, vm in
+                        contestRow(for: vm, index: index)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    }
                 }
             }
 
@@ -398,6 +384,29 @@ struct ContestsView: View {
         return collapsedSpaces
     }
 
+    // 计算倒计时文本
+    private func countdownText(to targetDate: Date) -> String {
+        let interval = targetDate.timeIntervalSince(currentTime)
+        
+        if interval <= 0 {
+            return "已开始"
+        }
+        
+        let totalSeconds = Int(interval)
+        let days = totalSeconds / 86400
+        let hours = (totalSeconds % 86400) / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        
+        // 48小时内显示时分秒
+        if totalSeconds < 48 * 3600 {
+            return String(format: "%02d:%02d:%02d", hours + days * 24, minutes, seconds)
+        } else {
+            // 超过48小时显示天数
+            return "\(days)天"
+        }
+    }
+    
     @ViewBuilder private func rowHeader(_ vm: ContestVM) -> some View {
         let trimmed = handle.trimmed
         let solved: Int = {
@@ -413,76 +422,131 @@ struct ContestsView: View {
         let isLoadingRow = store.loadingContestIds.contains(vm.id)
         let _ = expanded.contains(vm.id)  // 保留用于触发重新计算
         let progress = total > 0 ? Double(solved) / Double(total) : 0.0
+        
+        // 判断是否应该显示 solved 信息
+        // 即将开始(BEFORE)和正在进行的比赛(CODING/PENDING_SYSTEM_TEST/SYSTEM_TEST)不显示
+        let shouldShowSolved = vm.phase != "BEFORE" && 
+                               vm.phase != "CODING" && 
+                               vm.phase != "PENDING_SYSTEM_TEST" && 
+                               vm.phase != "SYSTEM_TEST"
 
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(vm.name)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.primary)
+                    .lineLimit(2)
                 
-                HStack(spacing: 8) {
-                    if trimmed.isEmpty {
-                        Text("登录后显示做题进度")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else if total > 0 {
-                        // 进度条
-                        HStack(spacing: 6) {
-                            Text("Solved \(solved) / \(total)")
+                HStack(spacing: 10) {
+                    if shouldShowSolved {
+                        if trimmed.isEmpty {
+                            Text("登录后显示做题进度")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            
-                            // 小进度条
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule()
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(height: 4)
-                                    
-                                    Capsule()
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [.green, .blue],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
+                        } else if total > 0 {
+                            // 进度条
+                            HStack(spacing: 6) {
+                                Text("Solved \(solved) / \(total)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                // 小进度条
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule()
+                                            .fill(Color.gray.opacity(0.2))
+                                            .frame(height: 4)
+                                        
+                                        Capsule()
+                                            .fill(
+                                                LinearGradient(
+                                                    colors: [.green, .blue],
+                                                    startPoint: .leading,
+                                                    endPoint: .trailing
+                                                )
                                             )
-                                        )
-                                        .frame(width: geo.size.width * progress, height: 4)
-                                        .animation(.easeOut(duration: 0.5), value: progress)
+                                            .frame(width: geo.size.width * progress, height: 4)
+                                            .animation(.easeOut(duration: 0.5), value: progress)
+                                    }
                                 }
+                                .frame(width: 50, height: 4)
+                                
+                                Text("\(Int(progress * 100))%")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
                             }
-                            .frame(width: 60, height: 4)
-                            
-                            Text("\(Int(progress * 100))%")
-                                .font(.caption2)
+                        } else {
+                            Text("Solved \(solved)")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
-                                .monospacedDigit()
                         }
-                    } else {
-                        Text("Solved \(solved)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    if isLoadingRow { 
-                        ProgressView()
-                            .controlSize(.mini)
-                            .scaleEffect(0.8)
                     }
                 }
             }
             
             Spacer()
             
-            VStack(alignment: .trailing, spacing: 2) {
-                if let t = vm.startTime {
-                    Text(Self.friendlyDate(t))
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+            VStack(alignment: .trailing, spacing: 4) {
+                // 根据比赛状态显示不同的时间信息
+                if vm.phase == "BEFORE" {
+                    // 即将开始：显示倒计时（48小时内显示时分秒，超过48小时显示天数）
+                    if let startTime = vm.startTime {
+                        HStack(spacing: 0) {
+                            Text("距离比赛开始还有：")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(timeUntil(startTime, showSeconds: true))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    
+                    // 显示持续时长
+                    if let duration = vm.durationSeconds {
+                        Text("持续时长 " + formatDuration(duration))
+                            .font(.caption2)
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+                } else if vm.phase == "CODING" || vm.phase == "PENDING_SYSTEM_TEST" || vm.phase == "SYSTEM_TEST" {
+                    // 正在进行：显示剩余时间（显示时分秒）
+                    if let startTime = vm.startTime, let duration = vm.durationSeconds {
+                        let endTime = startTime.addingTimeInterval(TimeInterval(duration))
+                        HStack(spacing: 4) {
+                            Image(systemName: "hourglass")
+                                .font(.system(size: 10))
+                            Text(timeUntil(endTime, showSeconds: true))
+                        }
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .monospacedDigit()
+                    }
+                    
+                    // 显示持续时长
+                    if let duration = vm.durationSeconds {
+                        Text("持续时长 " + formatDuration(duration))
+                            .font(.caption2)
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
+                } else {
+                    // 已结束：显示绝对时间
+                    if let startTime = vm.startTime {
+                        Text(Self.friendlyDate(startTime))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    // 显示持续时长
+                    if let duration = vm.durationSeconds {
+                        Text("持续时长 " + formatDuration(duration))
+                            .font(.caption2)
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
     }
 
@@ -563,9 +627,10 @@ struct ContestsView: View {
                                 
                                 Spacer(minLength: 8)
                                 
-                                // 右侧评分区域 - 只显示有定义分数的题目
-                                if let rating = problem.rating {
-                                    VStack(alignment: .trailing, spacing: 4) {
+                                // 右侧评分和通过人数区域
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    // 评分（如果有定义）
+                                    if let rating = problem.rating {
                                         HStack(spacing: 4) {
                                             Text("●")
                                                 .font(.system(size: 10))
@@ -575,17 +640,18 @@ struct ContestsView: View {
                                                 .font(.system(size: 15, weight: .semibold))
                                                 .foregroundColor(colorForProblemRating(rating))
                                         }
-                                        
-                                        if let solvedCount = problemsetStore.problemStatistics[problem.id] {
-                                            HStack(spacing: 3) {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .font(.system(size: 9))
-                                                    .foregroundColor(.green.opacity(0.7))
-                                                
-                                                Text(formatSolvedCount(solvedCount))
-                                                    .font(.caption2)
-                                                    .foregroundColor(.secondary)
-                                            }
+                                    }
+                                    
+                                    // 通过人数（总是显示，如果有数据）
+                                    if let solvedCount = problemsetStore.problemStatistics[problem.id] {
+                                        HStack(spacing: 3) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.green.opacity(0.7))
+                                            
+                                            Text(formatSolvedCount(solvedCount))
+                                                .font(.caption2)
+                                                .foregroundColor(.secondary)
                                         }
                                     }
                                 }
@@ -638,77 +704,260 @@ struct ContestsView: View {
     }
 
     private static func friendlyDate(_ date: Date) -> String {
-        let days = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 999
-        if abs(days) <= 7 {
-            let fmt = RelativeDateTimeFormatter()
-            fmt.unitsStyle = .short
-            return fmt.localizedString(for: date, relativeTo: Date())
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.string(from: date)
+    }
+    
+    // 格式化比赛持续时长（纯时长，不带前缀）
+    private func formatDuration(_ seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        
+        if hours > 0 && minutes > 0 {
+            return "\(hours)小时\(minutes)分钟"
+        } else if hours > 0 {
+            return "\(hours)小时"
         } else {
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd"
-            return f.string(from: date)
-        }
-    }
-}
-
-// MARK: - 翻译数据模型
-struct TranslationSegment: Codable, Identifiable {
-    let id: UUID
-    let original: String
-    let translated: String
-    
-    init(original: String, translated: String) {
-        self.id = UUID()
-        self.original = original
-        self.translated = translated
-    }
-}
-
-// 题目部分类型
-enum ProblemSection: String, CaseIterable, Codable {
-    case legend = "Legend"          // 题目描述
-    case input = "Input"           // 输入说明
-    case output = "Output"         // 输出说明
-    case note = "Note"             // 注意事项
-    case interaction = "Interaction" // 交互说明
-    case hack = "Hack"             // Hack说明
-    case tutorial = "Tutorial"     // 题解
-    
-    var displayName: String {
-        switch self {
-        case .legend: return "题目描述"
-        case .input: return "输入"
-        case .output: return "输出"
-        case .note: return "注意事项"
-        case .interaction: return "交互"
-        case .hack: return "Hack"
-        case .tutorial: return "题解"
+            return "\(minutes)分钟"
         }
     }
     
-    var icon: String {
-        switch self {
-        case .legend: return "doc.text"
-        case .input: return "square.and.arrow.down"
-        case .output: return "square.and.arrow.up"
-        case .note: return "exclamationmark.triangle"
-        case .interaction: return "person.2.circle"
-        case .hack: return "hammer"
-        case .tutorial: return "lightbulb"
+    // 计算倒计时或剩余时间（使用 currentTime 以支持实时更新）
+    // 参数 showSeconds: 是否显示秒级倒计时（距离开始48小时内）
+    private func timeUntil(_ date: Date, showSeconds: Bool = false) -> String {
+        let interval = date.timeIntervalSince(currentTime)
+        
+        if interval <= 0 {
+            return "已开始"
+        }
+        
+        let totalSeconds = Int(interval)
+        let hours = (totalSeconds % 86400) / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        
+        // 使用日历计算天数差异
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: currentTime)
+        let startOfTargetDay = calendar.startOfDay(for: date)
+        let dayComponents = calendar.dateComponents([.day], from: startOfToday, to: startOfTargetDay)
+        let dayDifference = dayComponents.day ?? 0
+        
+        // 超过48小时（2天）：只显示天数（直接使用日期差）
+        if totalSeconds > 48 * 3600 {
+            return "\(dayDifference)天"
+        }
+        
+        // 48小时内且需要显示秒：显示时分秒
+        if showSeconds {
+            if totalSeconds >= 3600 {
+                let displayHours = totalSeconds / 3600
+                return String(format: "%02d:%02d:%02d", displayHours, minutes, seconds)
+            } else if minutes > 0 {
+                return String(format: "%02d:%02d", minutes, seconds)
+            } else {
+                return "\(seconds)秒"
+            }
+        } else {
+            // 不显示秒：显示时分
+            if totalSeconds >= 3600 {
+                let displayHours = totalSeconds / 3600
+                return "\(displayHours)小时\(minutes)分钟"
+            } else if minutes > 0 {
+                return "\(minutes)分钟"
+            } else {
+                return "\(totalSeconds)秒"
+            }
         }
     }
-}
-
-// 按部分组织的翻译内容
-struct SectionTranslation: Codable, Identifiable {
-    let id: UUID
-    let section: ProblemSection
-    let segments: [TranslationSegment]
     
-    init(section: ProblemSection, segments: [TranslationSegment]) {
-        self.id = UUID()
-        self.section = section
-        self.segments = segments
+    // MARK: - 辅助函数：分区比赛列表
+    
+    // 将比赛按状态分成三组：即将开始、正在进行、已结束
+    private func partitionContests(_ contests: [ContestVM]) -> (upcoming: [ContestVM], ongoing: [ContestVM], finished: [ContestVM]) {
+        var upcoming: [ContestVM] = []
+        var ongoing: [ContestVM] = []
+        var finished: [ContestVM] = []
+        
+        for contest in contests {
+            if contest.phase == "BEFORE" {
+                // 即将开始
+                upcoming.append(contest)
+            } else if contest.phase == "CODING" || 
+                      contest.phase == "PENDING_SYSTEM_TEST" || 
+                      contest.phase == "SYSTEM_TEST" {
+                // 正在进行
+                ongoing.append(contest)
+            } else {
+                // 已结束
+                finished.append(contest)
+            }
+        }
+        
+        // 合并即将开始和正在进行的比赛，按开始时间从近到远排序（最近的在上面）
+        let upcomingAndOngoing = (upcoming + ongoing).sorted { contest1, contest2 in
+            guard let time1 = contest1.startTime, let time2 = contest2.startTime else {
+                return false
+            }
+            return time1 < time2  // 时间越早越靠前
+        }
+        
+        return (upcomingAndOngoing, [], finished)
+    }
+    
+    // 不可展开的比赛行视图（用于即将开始的比赛）
+    @ViewBuilder
+    private func contestRowNonExpandable(for vm: ContestVM, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            rowHeader(vm)
+        }
+        .transition(.asymmetric(
+            insertion: .move(edge: .trailing).combined(with: .opacity),
+            removal: .opacity
+        ))
+        .animation(.spring(response: 0.4, dampingFraction: 0.8).delay(Double(index) * 0.05), value: store.vms.count)
+    }
+    
+    // 统一的比赛行视图（可展开）
+    @ViewBuilder
+    private func contestRow(for vm: ContestVM, index: Int) -> some View {
+        DisclosureGroup(isExpanded: Binding(
+            get: { expandedContests[vm.id] ?? false },
+            set: { isExpanding in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    expandedContests[vm.id] = isExpanding
+                }
+                if isExpanding {
+                    Task { 
+                        await store.ensureProblemsLoaded(contestId: vm.id)
+                    }
+                }
+            }
+        )) {
+            // 展开内容：题目 / 行内错误 / 占位
+            if vm.phase == "BEFORE" {
+                // 即将开始的比赛：显示暂无题目提示
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                    Text("比赛还没开始，暂无题目")
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                }
+                .padding(.vertical, 12)
+            } else if let err = store.problemErrorMap[vm.id] {
+                Text(err).foregroundColor(.red)
+            } else if let problems = store.problemCache[vm.id], !problems.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(problems.enumerated()), id: \.element.index) { pIndex, p in
+                        let problemState = problemStateForDisplay(vmId: vm.id, p: p)
+                        
+                        Button {
+                            performLightHaptic()
+                            selectedProblem = p
+                        } label: {
+                            HStack(spacing: 12) {
+                                // 状态图标
+                                circledStatusIcon(for: problemState)
+                                    .scaleEffect(1.1)
+                                
+                                // 题目信息
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 8) {
+                                        Text(p.index)
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundColor(colorForProblemRating(p.rating))
+                                        
+                                        Text(p.name)
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.primary)
+                                            .lineLimit(2)
+                                    }
+                                    
+                                    HStack(spacing: 8) {
+                                        if let rating = p.rating {
+                                            HStack(spacing: 4) {
+                                                Text("●")
+                                                    .font(.system(size: 8))
+                                                    .foregroundColor(colorForProblemRating(rating))
+                                                Text("\(rating)")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                        
+                                        if let solvedCount = store.problemStatistics[p.id] {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 8))
+                                                    .foregroundColor(.green.opacity(0.7))
+                                                
+                                                Text(formatSolvedCount(solvedCount))
+                                                    .font(.caption2)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(.systemBackground))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(colorForProblemRating(p.rating).opacity(0.2), lineWidth: 1)
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7).delay(Double(pIndex) * 0.05), value: expanded.contains(vm.id))
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+            } else if store.loadingContestIds.contains(vm.id) {
+                HStack { ProgressView(); Text("Loading...") }
+            } else {
+                Text("展开加载题目").foregroundColor(.secondary)
+            }
+        } label: {
+            rowHeader(vm)
+        }
+        .transition(.asymmetric(
+            insertion: .move(edge: .trailing).combined(with: .opacity),
+            removal: .opacity
+        ))
+        .animation(.spring(response: 0.4, dampingFraction: 0.8).delay(Double(index) * 0.05), value: store.vms.count)
+    }
+    
+    // MARK: - 倒计时定时器管理
+    
+    private func startCountdownTimer() {
+        // 停止旧的定时器（如果有）
+        stopCountdownTimer()
+        
+        // 每秒更新一次当前时间
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            currentTime = Date()
+        }
+    }
+    
+    private func stopCountdownTimer() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
     }
 }
 
@@ -1345,248 +1594,6 @@ private struct PressScaleStyle: ButtonStyle {
                 .shadow(color: Color.black.opacity(pressed ? 0.2 : 0), radius: 8, x: 0, y: 4)
                 .animation(.interactiveSpring(response: 0.08, dampingFraction: 0.9), value: pressed)
                 .simultaneousGesture(touchDown)
-        }
-    }
-}
-
-// MARK: - 轻触反馈
-private func performLightHaptic() {
-#if os(iOS)
-    let generator = UIImpactFeedbackGenerator(style: .light)
-    generator.impactOccurred()
-#endif
-}
-
-// MARK: - 状态图标工具
-private func statusIcon(for attempt: ProblemAttemptState) -> String {
-    switch attempt {
-    case .solved: return "✓"
-    case .tried: return "✗"
-    case .none: return ""
-    }
-}
-
-private func statusIconColor(for attempt: ProblemAttemptState) -> Color {
-    switch attempt {
-    case .solved: return .green
-    case .tried: return .red
-    case .none: return .secondary
-    }
-}
-
-// MARK: - 圆圈状态图标组件
-@ViewBuilder
-private func circledStatusIcon(for attempt: ProblemAttemptState) -> some View {
-    let icon = statusIcon(for: attempt)
-    let iconColor = statusIconColor(for: attempt)
-    
-    ZStack {
-        // 圆圈边框
-        Circle()
-            .stroke(iconColor, lineWidth: 1.5)
-            .frame(width: 18, height: 18)
-        
-        // 图标内容
-        if !icon.isEmpty {
-            Text(icon)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(iconColor)
-        }
-    }
-    .frame(width: 20, height: 20)
-}
-
-// MARK: - 颜色工具
-private func colorForProblemRating(_ rating: Int?) -> Color {
-    guard let r = rating else { return .black }
-    return colorForRating(r)
-}
-
-// MARK: - 工具函数
-private func formatSolvedCount(_ count: Int) -> String {
-    if count >= 1000000 {
-        return String(format: "%.1fM", Double(count) / 1000000)
-    } else if count >= 1000 {
-        return String(format: "%.1fK", Double(count) / 1000)
-    } else {
-        return String(count)
-    }
-}
-
-
-// MARK: - 标签显示逻辑
-@MainActor
-private func shouldShowTags(for problem: CFProblem, store: ProblemsetStore) -> Bool {
-    let status = store.getProblemStatus(for: problem)
-    
-    // 如果是已解决的题目，总是显示标签
-    if status == .solved {
-        return true
-    }
-    
-    // 如果是未解决的题目，根据设置决定是否显示
-    return store.filter.showUnsolvedTags
-}
-
-// MARK: - 标签视图组件
-private struct ProblemTagsView: View {
-    let tags: [String]
-    
-    var body: some View {
-        if !tags.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(tags, id: \.self) { tag in
-                        Text(tag)
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.gray.opacity(0.15))
-                            )
-                            .foregroundColor(Color.secondary)
-                    }
-                }
-                .padding(.horizontal, 12)
-            }
-        }
-    }
-}
-
-// MARK: - 自定义分段控制器
-struct CustomSegmentedPicker: View {
-    @Binding var selection: PracticeMode
-    @Namespace private var animation
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(PracticeMode.allCases, id: \.self) { mode in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selection = mode
-                    }
-                    // 触觉反馈
-                    #if canImport(UIKit)
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.impactOccurred()
-                    #endif
-                } label: {
-                    VStack(spacing: 4) {
-                        Text(mode.rawValue)
-                            .font(.system(size: 15, weight: selection == mode ? .semibold : .regular))
-                            .foregroundColor(selection == mode ? .primary : .secondary)
-                        
-                        // 底部指示器
-                        if selection == mode {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.accentColor)
-                                .frame(height: 3)
-                                .matchedGeometryEffect(id: "segment", in: animation)
-                        } else {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.clear)
-                                .frame(height: 3)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                }
-            }
-        }
-        .background(Color(.systemBackground))
-    }
-}
-
-// MARK: - 美化搜索框组件
-struct EnhancedSearchField: View {
-    @Binding var text: String
-    var placeholder: String
-    var onSubmit: () -> Void
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(isFocused ? .accentColor : .secondary)
-                .font(.system(size: 16))
-                .scaleEffect(isFocused ? 1.1 : 1.0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isFocused)
-            
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.plain)
-                .focused($isFocused)
-                .onSubmit(onSubmit)
-            
-            if !text.isEmpty {
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        text = ""
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                        .font(.system(size: 14))
-                }
-                .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(.systemGray6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isFocused ? Color.accentColor : Color.clear, lineWidth: 2)
-                )
-        )
-        .animation(.easeInOut(duration: 0.2), value: isFocused)
-    }
-}
-
-// MARK: - 骨架屏加载组件
-struct SkeletonListRow: View {
-    @State private var shimmerOffset: CGFloat = -300
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // 标题骨架
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.gray.opacity(0.3))
-                .frame(height: 16)
-                .frame(maxWidth: .infinity)
-                .overlay(
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.clear, Color.white.opacity(0.5), Color.clear],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .offset(x: shimmerOffset)
-                )
-                .clipped()
-            
-            // 副标题骨架
-            HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 120, height: 12)
-                
-                Spacer()
-                
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 80, height: 12)
-            }
-        }
-        .padding(.vertical, 8)
-        .onAppear {
-            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                shimmerOffset = 300
-            }
         }
     }
 }
