@@ -561,7 +561,7 @@ Special thanks to the competitive programming community for inspiration and feed
 **Author**: Boxiang Zhao (赵勃翔)
 
 - 📧 **Email**: [2750437093@qq.com](mailto:2750437093@qq.com)
-- 💬 **Issues**: [GitHub Issues](https://github.com/yourusername/CfEditor/issues)
+- 💬 **Issues**: [GitHub Issues](https://github.com/Blossoms1010/CfEditor/issues)
 
 For bug reports, feature requests, or general questions, feel free to open an issue or send an email.
 
@@ -574,6 +574,6 @@ For bug reports, feature requests, or general questions, feel free to open an is
 
 **Built with ❤️ for the Competitive Programming Community**
 
-[Report Bug](https://github.com/Blossoms1010/CfEditor/issues) • [Request Feature](https://github.com/Blossoms1010/CfEditor/issues) • [Documentation](https://github.com/yourusername/CfEditor/wiki)
+[Report Bug](https://github.com/Blossoms1010/CfEditor/issues) • [Request Feature](https://github.com/Blossoms1010/CfEditor/issues) 
 
 </div>
