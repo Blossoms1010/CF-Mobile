@@ -13,13 +13,6 @@ A native iOS/macOS app that brings the complete Codeforces experience to your mo
 
 </div>
 
-> **🆕 New in Latest Version:**
-> - 🔧 **Flexible Judge0 Configuration**: Switch between Public API, RapidAPI, and custom instances
-> - 🔑 **Separate API Key Management**: Independent storage for RapidAPI and custom instance credentials
-> - ⚙️ **Easy Settings UI**: Configure code execution services directly in the app
-
----
-
 ## ✨ Features
 
 ### 🏆 Contest & Problemset Explorer
