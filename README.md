@@ -8,7 +8,7 @@ A native iOS/macOS app that brings the complete Codeforces experience to your mo
 
 [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2017.0%2B%20%7C%20macOS%2014.0%2B-lightgrey.svg)](https://developer.apple.com)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 
 [Features](#-features) • [Installation](#-installation) • [Screenshots](#-screenshots) • [Configuration](#-configuration)
 
