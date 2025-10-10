@@ -557,7 +557,7 @@ struct ProblemStatement {
 **作者**: 赵勃翔 (Boxiang Zhao)
 
 - 📧 **邮箱**: [2750437093@qq.com](mailto:2750437093@qq.com)
-- 💬 **议题**: [GitHub Issues](https://github.com/yourusername/CfEditor/issues)
+- 💬 **议题**: [GitHub Issues](https://github.com/Blossoms1010/CfEditor/issues)
 
 有关 bug 报告、功能请求或一般问题，请随时打开 issue 或发送电子邮件。
 
@@ -565,7 +565,7 @@ struct ProblemStatement {
 
 **⭐ 如果您觉得这个项目有帮助，请给个 Star！**
 
-[报告 Bug](https://github.com/yourusername/CfEditor/issues) • [请求功能](https://github.com/yourusername/CfEditor/issues) • [文档](https://github.com/yourusername/CfEditor/wiki)
+[报告 Bug](https://github.com/Blossoms1010/CfEditor/issues) • [请求功能](https://github.com/Blossoms1010/CfEditor/issues)
 
 </div>
 
