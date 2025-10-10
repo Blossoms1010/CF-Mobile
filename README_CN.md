@@ -96,7 +96,6 @@
 - 🔥 **活动热力图**: GitHub 风格的贡献日历
   - 基于提交和 AC 数量的颜色强度
   - 交互式：点击任意日期查看详情
-  - 悬停显示确切的提交数量
 - 📊 **难度分布**: 按评分展示已解决题目的柱状图
 - 🥧 **标签分析**: 饼图可视化您的强项
   - 查看您练习最多的主题
@@ -545,12 +544,6 @@ struct ProblemStatement {
 
 ---
 
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
-
----
-
 ## 🙏 致谢
 
 这个项目离不开这些出色的资源:
@@ -568,7 +561,7 @@ struct ProblemStatement {
 
 ## 📮 联系方式
 
-**作者**: 赵勃翔 (Zhao Boxiang)
+**作者**: 赵勃翔 (Boxiang Zhao)
 
 - 📧 **邮箱**: [2750437093@qq.com](mailto:2750437093@qq.com)
 - 💬 **Issues**: [GitHub Issues](https://github.com/yourusername/CfEditor/issues)
