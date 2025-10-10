@@ -9,7 +9,7 @@
 [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2017.0%2B%20%7C%20macOS%2014.0%2B-lightgrey.svg)](https://developer.apple.com)
 
-[功能特性](#-功能特性) • [安装说明](#-安装说明) • [截图展示](#-截图展示) • [配置指南](#-配置指南)
+[功能特性](#-功能特性) • [安装说明](#-安装说明) •  [配置指南](#-配置指南)
 
 </div>
 
@@ -152,7 +152,7 @@
 
 4. **解析依赖**
    - Xcode 会通过 Swift Package Manager 自动下载依赖
-   - 如需手动: `文件` → `Packages` → `Update to Latest Package Versions`
+   - 如需手动: `文件` → `软件包` → `Update to Latest Package Versions`
 
 #### 安装到真机 iPhone
 
@@ -163,7 +163,7 @@
    - 选择 **CfEditor** target
    - 前往 **Signing & Capabilities** 标签
    - 启用 **"Automatically manage signing"**
-   - 选择您的 **Team**（免费 Apple ID 即可）
+   - 选择您的 **团队**（免费 Apple ID 即可）
 4. **选择设备**: 从 Xcode 工具栏的设备下拉菜单中选择您的 iPhone
 5. **构建并运行**: 按 `⌘R` 或点击 ▶️ 按钮
 6. **信任开发者**（首次需要）:
@@ -319,7 +319,7 @@ CfEditor/
 2. 滚动到 **"翻译 AI 模型"**
 3. 点击 **"添加"** 并配置:
    - **模型名称**: 显示名称（例如 "GPT-4o Mini"）
-   - **模型**: 模型 ID（例如 `gpt-4o-mini`, `claude-3-sonnet`, `qwen2.5:14b`）
+   - **模型**: 模型 ID（例如 `gpt-4o-mini`， `claude-3-sonnet`， `qwen2.5:14b`）
    - **API 端点**: `/v1/chat/completions` 的完整 URL
    - **API 密钥**: 您的 API 密钥（某些代理可选）
 
@@ -509,7 +509,7 @@ struct ProblemStatement {
 
 ### 开发流程
 
-1. **Fork** 仓库
+1. **复刻** 仓库
 2. **创建** 功能分支:
    ```bash
    git checkout -b feature/amazing-feature
@@ -557,37 +557,13 @@ struct ProblemStatement {
 **作者**: 赵勃翔 (Boxiang Zhao)
 
 - 📧 **邮箱**: [2750437093@qq.com](mailto:2750437093@qq.com)
-- 💬 **Issues**: [GitHub Issues](https://github.com/yourusername/CfEditor/issues)
+- 💬 **议题**: [GitHub Issues](https://github.com/yourusername/CfEditor/issues)
 
 有关 bug 报告、功能请求或一般问题，请随时打开 issue 或发送电子邮件。
 
 ---
 
-## 📸 截图展示
-
-<div align="center">
-
-### 比赛与题目浏览
-*实时比赛列表 • 高级筛选 • 带 LaTeX 的题目描述*
-
-### 代码编辑器
-*Monaco 编辑器 • 文件管理 • 测试执行面板*
-
-### 个人统计
-*评分图表 • 活动热力图 • 标签分布*
-
-### 设置与自定义
-*主题选择 • 代码模板 • AI 模型配置*
-
-</div>
-
----
-
-<div align="center">
-
 **⭐ 如果您觉得这个项目有帮助，请给个 Star！**
-
-**用 ❤️ 为竞赛编程社区打造**
 
 [报告 Bug](https://github.com/yourusername/CfEditor/issues) • [请求功能](https://github.com/yourusername/CfEditor/issues) • [文档](https://github.com/yourusername/CfEditor/wiki)
 
