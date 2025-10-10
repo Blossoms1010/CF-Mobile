@@ -96,7 +96,6 @@ A native iOS/macOS app that brings the complete Codeforces experience to your mo
 - 🔥 **Activity Heatmap**: GitHub-style contribution calendar
   - Color intensity based on submissions and AC count
   - Interactive: tap any day to view details
-  - Hover to see exact submission counts
 - 📊 **Difficulty Distribution**: Bar chart showing solved problems by rating
 - 🥧 **Tag Analysis**: Pie chart visualizing your strengths
   - See which topics you've practiced most
@@ -546,12 +545,6 @@ Contributions are welcome! Here's how you can help:
 - Add comments for complex logic
 - Test in both Light and Dark modes
 - Ensure iPad and iPhone compatibility
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
