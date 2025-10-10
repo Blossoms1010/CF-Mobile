@@ -565,7 +565,7 @@ Special thanks to the competitive programming community for inspiration and feed
 
 ## 📮 Contact
 
-**Author**: Zhao Boxiang (赵勃翔)
+**Author**: Boxiang Zhao (赵勃翔)
 
 - 📧 **Email**: [2750437093@qq.com](mailto:2750437093@qq.com)
 - 💬 **Issues**: [GitHub Issues](https://github.com/yourusername/CfEditor/issues)
