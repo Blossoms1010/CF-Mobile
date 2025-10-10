@@ -166,7 +166,7 @@
 
 - **English**: Read the [Full Documentation](README.md)
 - **中文**: 阅读[完整文档](README_CN.md)
-- **Issues**: [Report bugs or request features](https://github.com/yourusername/CfEditor/issues)
+- **Issues**: [Report bugs or request features](https://github.com/Blossoms1010/CfEditor/issues)
 - **Email**: 2750437093@qq.com
 
 ---
