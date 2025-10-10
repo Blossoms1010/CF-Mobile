@@ -574,6 +574,6 @@ For bug reports, feature requests, or general questions, feel free to open an is
 
 **Built with ❤️ for the Competitive Programming Community**
 
-[Report Bug](https://github.com/yourusername/CfEditor/issues) • [Request Feature](https://github.com/yourusername/CfEditor/issues) • [Documentation](https://github.com/yourusername/CfEditor/wiki)
+[Report Bug](https://github.com/Blossoms1010/CfEditor/issues) • [Request Feature](https://github.com/Blossoms1010/CfEditor/issues) • [Documentation](https://github.com/yourusername/CfEditor/wiki)
 
 </div>
