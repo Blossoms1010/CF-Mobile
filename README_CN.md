@@ -563,6 +563,8 @@ struct ProblemStatement {
 
 ---
 
+<div align="center">
+
 **⭐ 如果您觉得这个项目有帮助，请给个 Star！**
 
 [报告 Bug](https://github.com/Blossoms1010/CfEditor/issues) • [请求功能](https://github.com/Blossoms1010/CfEditor/issues)
